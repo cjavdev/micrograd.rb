@@ -1,4 +1,4 @@
-# Learn ML - Neural Network Library
+# Ruby version of micrograd for learning neural networks and backpropagation
 
 Based on https://www.youtube.com/watch?v=VMj-3S1tku0
 
