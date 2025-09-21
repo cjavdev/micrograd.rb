@@ -1,5 +1,7 @@
 # Learn ML - Neural Network Library
 
+Based on https://www.youtube.com/watch?v=VMj-3S1tku0
+
 A Ruby implementation of automatic differentiation and neural network building blocks using lambda-based backpropagation, similar to PyTorch's approach.
 
 ## Project Structure
