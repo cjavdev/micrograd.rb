@@ -1,74 +1,131 @@
-# Learn ML - Value Class
+# Learn ML - Neural Network Library
 
-A simple Ruby implementation of a Value class with automatic differentiation, Neuron, Layer, and MLP classes for machine learning applications.
+A Ruby implementation of automatic differentiation and neural network building blocks using lambda-based backpropagation, similar to PyTorch's approach.
 
 ## Project Structure
 
 ```
 learn-ml/
 ├── lib/
-│   ├── value.rb          # Value class implementation
+│   ├── value.rb          # Value class with lambda-based autograd
 │   ├── neuron.rb         # Neuron class implementation
 │   ├── layer.rb          # Layer class implementation
-│   └── mlp.rb            # MLP class implementation
+│   ├── mlp.rb            # MLP (Multi-Layer Perceptron) class
+│   └── render.rb         # Graph visualization using GraphViz
 ├── spec/
 │   ├── spec_helper.rb    # RSpec configuration
-│   ├── value_spec.rb     # Value class test suite
-│   ├── neuron_spec.rb    # Neuron class test suite
-│   ├── layer_spec.rb     # Layer class test suite
-│   └── mlp_spec.rb       # MLP class test suite
-├── main.rb               # Example usage
+│   ├── value_spec.rb     # Value class test suite (42 tests)
+│   ├── neuron_spec.rb    # Neuron class test suite (41 tests)
+│   ├── layer_spec.rb     # Layer class test suite (29 tests)
+│   └── mlp_spec.rb       # MLP class test suite (35 tests)
+├── main.rb               # Example usage and demonstrations
 ├── Gemfile               # Ruby dependencies
+├── graph.png             # Generated computation graph visualization
 └── README.md             # This file
 ```
 
-## Value Class Features
+## Value Class - Lambda-Based Automatic Differentiation
 
-The Value class supports the following mathematical operations:
+The Value class implements automatic differentiation using **lambda-based backpropagation**. Each operation creates a result Value object and stores a lambda function that knows how to compute gradients for that specific operation.
 
-### Basic Operations
-- `+` - Addition
-- `-` - Subtraction
-- `*` - Multiplication
-- `/` - Division (with zero-division protection)
-- `**` - Power operation
+### Key Features
 
-### Mathematical Functions
-- `tanh` - Hyperbolic tangent
-- `exp` - Exponential function
-- `abs` - Absolute value
-- `sqrt` - Square root (with negative number protection)
+- **Lambda-based gradients**: Each operation stores its own backward function as a lambda
+- **Automatic graph traversal**: Uses topological sort for efficient gradient computation
+- **Memory efficient**: Only stores necessary backward functions, not the entire computation graph
+- **Type coercion**: Automatically converts numeric types to Value objects
+- **Random labels**: Automatically generates 3-letter labels for visualization
 
-### Comparison Operations
-- `==` - Equality
-- `>`, `<`, `>=`, `<=` - Comparison operators
+### Mathematical Operations
 
-### Unary Operations
-- `-@` - Unary minus (negation)
-- `+@` - Unary plus (returns self)
+```ruby
+require_relative 'lib/value'
 
-## Neuron Class Features
+# Basic arithmetic operations
+a = Value.new(2.0, label: 'a')
+b = Value.new(-3.0, label: 'b')
 
-The Neuron class implements a simple artificial neuron with:
+# All operations return Value objects with stored backward functions
+c = a + b        # Addition
+d = a * b        # Multiplication
+e = a / b        # Division
+f = a ** 2       # Power (numeric exponent only)
+g = a.tanh       # Hyperbolic tangent
+h = a.exp        # Exponential
 
-- **Random initialization**: Weights and bias are randomly initialized between -1 and 1
-- **Forward pass**: Computes weighted sum + bias and applies tanh activation
-- **Gradient computation**: Full support for backpropagation through automatic differentiation
-- **Flexible inputs**: Accepts both numeric values and Value objects
+# Unary operations
+neg_a = -a       # Negation (implemented as a * -1)
+```
 
-### Neuron Usage
+### Lambda-Based Backpropagation
+
+```ruby
+# Create a computation graph
+a = Value.new(2.0, label: 'a')
+b = Value.new(-3.0, label: 'b')
+c = Value.new(10.0, label: 'c')
+
+# Build expression: (a * b + c) * f
+e = a * b; e.label = 'e'
+d = e + c; d.label = 'd'
+f = Value.new(-2.0, label: 'f')
+L = d * f; L.label = 'L'
+
+# Automatic differentiation using lambda functions
+L.backward
+
+puts "Gradient of b: #{b.grad}"  # => -4.0
+puts "Gradient of f: #{f.grad}"  # => 4.0
+```
+
+### How Lambda-Based Autograd Works
+
+1. **Forward Pass**: Each operation creates a result Value and stores a lambda function
+2. **Lambda Storage**: The lambda is stored on the result Value (`out._backward = -> { ... }`)
+3. **Variable Capture**: The lambda captures the operands in its closure
+4. **Backward Pass**: `backward()` traverses the graph and calls each lambda
+5. **Gradient Accumulation**: Each lambda updates gradients for its captured operands
+
+```ruby
+# Example: Addition operation
+def +(other)
+  other = other.is_a?(Value) ? other : Value.new(other)
+  out = Value.new(@data + other.data, left: self, right: other, op: :+)
+
+  # Store backward function on result, capturing operands
+  out._backward = -> do
+    self.grad += out.grad    # ∂(a+b)/∂a = 1
+    other.grad += out.grad   # ∂(a+b)/∂b = 1
+  end
+
+  out
+end
+```
+
+## Neuron Class
+
+A simple artificial neuron with tanh activation and automatic gradient computation.
+
+### Features
+
+- **Random initialization**: Weights and bias initialized between -1 and 1
+- **Tanh activation**: Applies hyperbolic tangent to weighted sum + bias
+- **Flexible inputs**: Accepts numeric values or Value objects
+- **Gradient support**: Full backpropagation through the neuron
+
+### Usage
 
 ```ruby
 require_relative 'lib/neuron'
 
-# Create a neuron with 3 inputs
+# Create neuron with 3 inputs
 neuron = Neuron.new(3)
 
 # Forward pass
 input = [1.0, 2.0, 3.0]
 output = neuron.call(input)
 
-# Backward pass for gradient computation
+# Backward pass
 output.backward
 
 puts "Output: #{output.data}"
@@ -76,59 +133,60 @@ puts "Weight gradients: #{neuron.weights.map(&:grad)}"
 puts "Bias gradient: #{neuron.bias.grad}"
 ```
 
-## Layer Class Features
+## Layer Class
 
-The Layer class implements a collection of neurons that can be used to build neural networks:
+A collection of neurons that process inputs in parallel.
 
-- **Multiple neurons**: Creates a specified number of neurons with the same number of inputs
-- **Parallel processing**: Each neuron processes the same input independently
-- **Array output**: Returns an array of Value objects, one from each neuron
-- **Gradient computation**: Full support for backpropagation through all neurons
-- **Layer chaining**: Can be easily combined with other layers to build deep networks
+### Features
 
-### Layer Usage
+- **Multiple neurons**: Creates specified number of neurons with same inputs
+- **Parallel processing**: Each neuron processes input independently
+- **Array output**: Returns array of Value objects
+- **Layer chaining**: Easy composition with other layers
+
+### Usage
 
 ```ruby
 require_relative 'lib/layer'
 
-# Create a layer with 3 inputs and 2 outputs
+# Create layer: 3 inputs → 2 outputs
 layer = Layer.new(3, 2)
 
 # Forward pass
 input = [1.0, 2.0, 3.0]
 output = layer.call(input)
 
-# Backward pass for gradient computation
+# Backward pass
 output.each { |out| out.grad = 1.0 }
 output.each { |out| out.backward }
 
 puts "Layer output: #{output.map(&:data)}"
-puts "Number of neurons: #{layer.instance_variable_get(:@neurons).length}"
 ```
 
-## MLP Class Features
+## MLP Class (Multi-Layer Perceptron)
 
-The MLP (Multi-Layer Perceptron) class implements a complete neural network:
+A complete neural network with multiple layers.
 
-- **Multi-layer architecture**: Creates a network with any number of layers and neurons
-- **Automatic layer chaining**: Properly connects layers with correct input/output dimensions
-- **Forward propagation**: Processes input through all layers sequentially
-- **Gradient computation**: Full backpropagation support through the entire network
-- **Flexible architecture**: Supports any network topology (narrow, wide, deep)
+### Features
 
-### MLP Usage
+- **Flexible architecture**: Any number of layers and neurons per layer
+- **Automatic chaining**: Properly connects layers with correct dimensions
+- **Deep networks**: Supports arbitrary depth
+- **Full backpropagation**: Gradients flow through entire network
+
+### Usage
 
 ```ruby
 require_relative 'lib/mlp'
 
-# Create an MLP with 3 inputs -> 4 hidden -> 2 outputs
+# Create MLP: 3 inputs → 4 hidden → 2 outputs
 mlp = MLP.new(3, [4, 2])
 
 # Forward pass
 input = [1.0, 2.0, 3.0]
 output = mlp.call(input)
 
-# Backward pass for gradient computation
+# Backward pass
 output.each { |out| out.grad = 1.0 }
 output.each { |out| out.backward }
 
@@ -136,55 +194,21 @@ puts "MLP output: #{output.map(&:data)}"
 puts "Total parameters: #{mlp.parameters.length}"
 ```
 
-## Value Class Features
+## Graph Visualization
 
-The Value class supports the following mathematical operations:
-
-### Basic Operations
-- `+` - Addition
-- `-` - Subtraction
-- `*` - Multiplication
-- `/` - Division (with zero-division protection)
-- `**` - Power operation
-
-### Mathematical Functions
-- `tanh` - Hyperbolic tangent
-- `exp` - Exponential function
-- `abs` - Absolute value
-- `sqrt` - Square root (with negative number protection)
-
-### Comparison Operations
-- `==` - Equality
-- `>`, `<`, `>=`, `<=` - Comparison operators
-
-### Unary Operations
-- `-@` - Unary minus (negation)
-- `+@` - Unary plus (returns self)
-
-### Automatic Differentiation
-- `grad` - Gradient attribute
-- `backward` - Computes gradients using backpropagation
-- `_children` - Tracks computation graph
-- `_op` - Tracks operation type
-
-## Usage
+The library includes a Render class for visualizing computation graphs.
 
 ```ruby
-require_relative 'lib/value'
+require_relative 'lib/render'
 
-a = Value.new(5.0)
-b = Value.new(3.0)
+# Create a computation graph
+a = Value.new(2.0, label: 'a')
+b = Value.new(-3.0, label: 'b')
+c = a * b + Value.new(10.0, label: 'c')
 
-puts a + b     # => 8.0
-puts a * b     # => 15.0
-puts a.tanh    # => 0.9999092042625951
-puts a.exp     # => 148.4131591025766
-
-# Automatic differentiation
-c = a * b + a
-c.backward
-puts "Gradient of a: #{a.grad}"  # => 4.0
-puts "Gradient of b: #{b.grad}"  # => 2.0
+# Generate graph visualization
+render = Render.new(c)
+render.render  # Creates graph.png
 ```
 
 ## Running Tests
@@ -196,44 +220,40 @@ bundle install
 # Run all tests
 bundle exec rspec
 
-# Run tests with documentation format
+# Run with documentation format
 bundle exec rspec --format documentation
 ```
+
+## Test Coverage
+
+**147 comprehensive test cases** covering:
+
+- **Value class (42 tests)**: Mathematical operations, lambda-based gradients, edge cases
+- **Neuron class (41 tests)**: Forward/backward pass, gradient computation, integration
+- **Layer class (29 tests)**: Multi-neuron processing, gradient flow, chaining
+- **MLP class (35 tests)**: Deep network architectures, end-to-end backpropagation
+
+All tests pass with 100% success rate.
 
 ## Example Output
 
 ```bash
 $ ruby main.rb
-Testing Value class...
-a = 5.0
-b = 3.0
-a + b = 8.0
-a - b = 2.0
-a * b = 15.0
-a / b = 1.6666666666666667
-a ** b = 125.0
-a.tanh = 0.9999092042625951
-a.exp = 148.4131591025766
-
-==================================================
-Testing Neuron class...
-Neuron weights: [-0.9483489345076213, 0.11382553925359051, -0.7320466128837473]
-Neuron bias: -0.612724161236365
-Input: [1.0, 2.0, 3.0]
-Output: -0.9982824143961624
-Gradients after backward pass:
-  Input gradients: ["N/A", "N/A", "N/A"]
-  Weight gradients: [0.003432221107368738, 0.006864442214737476, 0.010296663322106214]
-  Bias gradient: 0.003432221107368738
+Value(-1.0, l: 2.0, r: -3.0, op: +, label: ABC)
 ```
 
-## Test Coverage
+## Key Advantages of Lambda-Based Approach
 
-The project includes comprehensive test suites with **147 test cases** covering:
+1. **Memory Efficient**: Only stores backward functions where needed
+2. **Flexible**: Each operation defines its own gradient computation
+3. **Modern**: Similar to PyTorch's autograd implementation
+4. **Debuggable**: Easy to inspect and modify backward functions
+5. **Extensible**: Simple to add new operations with custom gradients
 
-- **Value class**: 42 tests including mathematical operations, gradient computation, and edge cases
-- **Neuron class**: 41 tests including initialization, forward pass, gradient computation, and integration tests
-- **Layer class**: 29 tests including initialization, forward pass, gradient computation, layer chaining, and performance tests
-- **MLP class**: 35 tests including architecture validation, forward/backward propagation, and integration tests
+## Dependencies
 
-All tests pass with 100% success rate, ensuring the reliability of automatic differentiation and neural network functionality for building complex machine learning models.
+- **Ruby 3.4+**: For modern Ruby features
+- **RSpec**: Testing framework
+- **GraphViz**: For computation graph visualization
+
+This implementation provides a solid foundation for building machine learning models in Ruby with automatic differentiation capabilities.
