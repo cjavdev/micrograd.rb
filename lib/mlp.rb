@@ -1,5 +1,4 @@
 require_relative 'layer'
-require 'byebug'
 
 class MLP
   def initialize(number_of_inputs, sizes_of_layers)
